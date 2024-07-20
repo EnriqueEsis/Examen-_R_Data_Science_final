@@ -1,0 +1,487 @@
+---
+title: "Patrones de las aplicaciones exitosas en Google Play Store"
+author: "Enrique Esis"
+date: "15 de junio de 2024"
+output:
+  word_document:
+    toc: true
+    toc_depth: '3'
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    theme: journal
+    highlight: kate
+    df_print: paged
+    code_folding: show
+    fig_height: 4
+    fig_width: 6
+    number_sections: true
+    self_contained: true
+    lang: "es-ES"
+  pdf_document:
+    toc: true
+    toc_depth: '3'
+---
+
+\pagebreak
+
+# Definición del problema/objetivo de investigación. 
+
+Desarrollar un análisis integral del conjunto de datos de aplicaciones de la Play Store de Google para entender su estructura, limpiar y preparar los datos, realizar un análisis exploratorio exhaustivo y construir modelos predictivos que permitan predecir la calificación de las aplicaciones, utilizando técnicas de Random Forest y árboles de decisión.
+
+## Objetivos Específicos
+**1)** Obtener un resumen detallado y rápido del conjunto de datos para entender su estructura y contenido.
+
+**2)** Seleccionar las variables relevantes para el análisis y eliminar las irrelevantes.
+
+**3)** Limpiar el conjunto de datos eliminando filas con valores nulos para asegurar la integridad del análisis.
+
+**4)** Realizar análisis visuales y estadísticos para entender mejor las distribuciones y relaciones entre variables.
+
+**5)** Desarrollar modelos predictivos utilizando Random Forest y árboles de decisión para predecir la Calificación de        las aplicaciones.
+
+
+
+# Introducción
+
+En el acelerado universo de las aplicaciones móviles, la Google Play Store representa un inmenso repositorio que aloja millones de aplicaciones, abarcando desde juegos y herramientas de productividad hasta aplicaciones de estilo de vida y educación. Este proyecto se centra en analizar un conjunto de datos de aplicaciones de la Google Play Store para extraer información valiosa sobre las tendencias predominantes y los factores determinantes del éxito en este dinámico mercado.
+El conjunto de datos seleccionado contiene información detallada sobre diversas métricas de las aplicaciones, tales como el nombre, la categoría, la calificación, el número de instalaciones, y el precio, entre otros. 
+
+
+## Descripción de las variables de interes:
+- **Categoría**: Esta variable clasifica la aplicación móvil en una categoría específica, como redes sociales, juegos, productividad, etc.
+
+- **Clasificación.de.Contenido**: Indica la calificación o etiqueta de contenido asignada a la aplicación, como "Para todos", "Solo para adultos", "Adolescentes", etc.
+
+- **Calificación**: Esta variable indica la puntuación promedio otorgada por los usuarios a la aplicación. Por lo general, se basa en una escala de 1 a 5 estrellas, donde 5 representa la mejor calificación.
+
+- **Número.de.Calificaciones**: Indica la cantidad total de calificaciones que ha recibido la aplicación. Cuanto mayor sea este número, más representativa será la calificación promedio.
+
+- **Instalaciones.Máximas**: Es el número total de veces que la aplicación ha sido instalada en dispositivos móviles.
+
+- **Admite.Anuncios**: Esta variable es binaria y especifica si la aplicación admite anuncios publicitarios dentro de su interfaz. Puede ser "Sí" o "No".
+
+- **Compras.dentro.de.la.Aplicación**: Esta variable es binaria y especifica si la aplicación ofrece compras dentro de la aplicación. Puede ser "Sí" o "No".
+
+- **Precio**: Indica el costo de la aplicación para el usuario. Puede ser un valor numérico que representa el precio en la moneda local, o "Gratis" si la aplicación no tiene costo.
+
+
+
+## Funciones a programar:
+**1)** Función para generar boxblot multivariables
+
+# Preprocesamiento de Datos
+
+## Carga de paquetes
+
+```{r, message=FALSE}
+library(tidyverse)      # Carga el paquete para manipulación de datos
+library(readxl)         # Carga el paquete para leer archivos Excel
+library(ggplot2)        # Carga el paquete para gráficos
+library(dplyr)          # Carga el paquete para manipulación de datos
+library(corrplot)       # Carga el paquete para visualizar la matriz de correlación
+library(visdat)         # Carga el paquete para visualizar datos faltantes
+library(readr)          # Carga el paquete para leer archivos csv
+library(skimr)          # Carga el paquete para resúmenes estadísticos rápidos
+library(data.tree)      # Carga el paquete para manipulación de árboles de datos
+library(DiagrammeR)     # Carga el paquete para crear diagramas de redes
+library(tinytex)        # Carga el paquete para compilar documentos LaTeX
+library(RColorBrewer)   # Carga el paquete para paletas de colores para gráficos
+library(randomForest)   # Carga el paquete para algoritmos de bosques aleatorios
+library(stringr)
+
+```
+
+
+
+```{r}
+
+# Función para identificar características de un archivo dado su ruta
+identify_file <- function(file_path) {
+  
+  # Identificar tipo de archivo por la extensión
+  file_extension <- tools::file_ext(file_path)
+  
+  # Variable para almacenar la codificación del archivo
+  encoding <- NA
+  
+  # Variable para almacenar el separador del archivo
+  separator <- NA
+  
+  # Leer las primeras líneas del archivo para inferir separador y codificación
+  read_first_lines <- function(file_path, n_lines) {
+    readLines(file_path, n = n_lines, warn = FALSE, encoding = "UTF-8")
+  }
+  
+  # Inferir el separador más probable en base a las primeras líneas
+  infer_separator <- function(lines) {
+    separators <- c(",", ";", "\t", "|")
+    separator_counts <- sapply(separators, function(sep) {
+      sum(sapply(lines, function(line) {
+        length(strsplit(line, sep, fixed = TRUE)[[1]])
+      }))
+    })
+    separators[which.max(separator_counts)]
+  }
+  
+  # Inferir la codificación del archivo
+  infer_encoding <- function(file_path) {
+    guess_encoding(file_path, n_max = 1000)$encoding[1]
+  }
+  
+  # Revisar por el tipo de archivo y cómo leerlo
+  if (file_extension == "csv" || file_extension == "txt") {
+    # Para archivos CSV y TXT
+    
+    # Leer las primeras líneas para inferir el separador
+    first_lines <- read_first_lines(file_path, ifelse(file_extension == "csv", 1000, 10))
+    
+    # Inferir la codificación del archivo
+    encoding <- infer_encoding(file_path)
+    
+    # Inferir el separador más probable
+    separator <- infer_separator(first_lines)
+    
+    # Leer el archivo CSV
+    df <- read.csv(file_path, sep = separator, fileEncoding = encoding)
+    
+  } else if (file_extension %in% c("xls", "xlsx")) {
+    # Para archivos Excel
+    
+    encoding <- "UTF-8"   # Suponiendo UTF-8 para archivos Excel
+    
+  } else {
+    # Tipo de archivo no soportado
+    stop("Tipo de archivo no soportado.")
+  }
+  
+  # Retornar una lista con la información recolectada
+  Output<-list(
+    file_path = file_path,   # Ruta del archivo
+    file_type = file_extension,
+    encoding = encoding,
+    separator = separator,
+    df = df  # Agregar el dataframe como parte de la salida
+  )
+  return(Output)
+}
+
+# Ejemplo de uso
+archivo <- "C:\\Users\\EEsis\\Downloads\\Datasets\\Google-Playstore_T_R.csv"
+file_info <- identify_file(archivo)
+print(file_info)
+
+# Acceder al dataframe
+df <- file_info$df
+
+# Ver las primeras filas del dataframe
+head(df)
+
+
+#df <- read.csv(archivo, sep = ";", fileEncoding = "ISO-8859-1")
+
+#view(df)
+
+
+```
+
+
+
+
+
+## Carga de datos
+Carga el archivo desde ubicación de github
+
+```{r}
+url <- "https://raw.githubusercontent.com/EnriqueEsis/Evaluacion1_ENTREGA/main/Google-Playstore_T_R.csv"
+df <- read.csv(url, sep = ",", fileEncoding = "latin1")
+view(df)
+
+# Ruta de ubicación de windows
+#ruta_archivo <-'C:\\Users\\EEsis\\Downloads\\Datasets\\Google-Playstore_T_R.csv'
+
+# Cargar el archivo CSV desde ubicación de windows
+#df <- read.csv(ruta_archivo, fileEncoding = "Latin1")
+
+```
+
+## Identificar los tipos de variables
+Mostrar resumen rápido y completo del conjunto de datos
+
+```{r}
+skim(df)
+head(df)
+```
+
+## Selección y eliminación de variables
+Se seleccionan las variables cuantitativas, cualitativas y se procede a eliminar el resto de las variables:
+
+```{r}
+
+# Nombre de las columnas que deseas conservar
+columnas_a_conservar <- c("Admite.Anuncios", 
+                          "Calificación", 
+                          "Categoría", 
+                          "Precio",
+                          "Clasificación.de.Contenido", 
+                          "Instalaciones.Máximas", 
+                          "Compras.dentro.de.la.Aplicación", 
+                          "Número.de.Calificaciones")
+
+# Seleccionar solo las columnas especificadas
+df <- df[, columnas_a_conservar]
+
+view(df)
+```
+
+## Eliminar filas con valores nulos y NA
+
+```{r}
+
+# Eliminar filas con NA en las columnas "Calificación"
+df <- df[!is.na(df$Calificación), ]
+
+# Eliminar filas con valores NA
+df <- na.omit(df)
+
+```
+
+
+## Verificar los cambios efectuados
+Mostrar resumen rápido y completo del conjunto de datos para verificar los cambios realizados
+
+```{r}
+#df <- iris # Para comprobar los gráficos con otro dataset
+
+skim(df)
+head(df)
+```
+# Análisis Exploratorio de Datos
+
+## Graficos variables cuantitativas (BOXPLOT)
+
+```{r}
+numeric_df <- dplyr::select_if(df, is.numeric)
+
+for (columna in names(numeric_df)) {
+  
+  # Calcular los valores estadísticos
+  mediana <- median(numeric_df[[columna]])
+  q1 <- quantile(numeric_df[[columna]], 0.25, na.rm = TRUE)
+  q3 <- quantile(numeric_df[[columna]], 0.75, na.rm = TRUE)
+  min_val <- min(numeric_df[[columna]])
+  max_val <- max(numeric_df[[columna]])
+  
+  # Boxplot con etiquetas numéricas usando annotate
+  boxplot <- ggplot(numeric_df, aes(y = !!sym(columna))) +
+    geom_boxplot(fill = "skyblue", color = "black") +
+    annotate("text", x =0.45, y = mediana, label = paste("M:", round(mediana, 2)), color = "black", size = 3) +
+    annotate("text", x = 0.45, y = q1, label = paste("Q1:", round(q1, 2)), color = "black", size = 3) +
+    annotate("text", x = 0.45, y = q3, label = paste("Q3:", round(q3, 2)), color = "black", size = 3) +
+    annotate("text", x = 0.45, y = min_val, label = paste("Min:", round(min_val, 2)), color = "black", size = 3) +
+    labs(title = paste("Boxplot de", columna), y = "Valor")
+  
+  # Mostrar el gráfico
+  print(boxplot)
+  
+}
+
+```
+
+## Graficos variables cualitativas (BARPLOT y PIECHART)
+
+```{r}
+# Seleccionar solo las columnas categóricas
+columnas_chr <- names(df)[sapply(df, is.character)]
+# Iterar a través de las columnas categóricas y crear los gráficos
+for (column in columnas_chr) {
+  
+  # Crear un gráfico de barras
+  barplot <- ggplot(data = df, aes(x = !!as.name(column))) +
+    geom_bar(fill = "skyblue", color = "black") +
+    geom_text(stat = "count", aes(label = paste0(round(after_stat(count) / sum(after_stat(count)) * 100), "%")),
+            position = position_stack(vjust = 1), vjust = -0.5, color = "black", size = 3.5) +
+  labs(title = paste("Frecuencia de", column),
+       x = column,
+       y = "Frecuencia")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +  # Rotar las etiquetas del eje x
+  expand_limits(y = max(table(df[[column]])) * 1.1)  # Ajustar los límites del eje y para que las etiquetas no se salgan del gráfico
+  print(barplot)
+  
+}
+
+```
+
+## Medidas estadisticas de variables cuantitativas
+
+```{r}
+summary(numeric_df)
+```
+
+## Matriz de correlación de variables cuantitativas
+
+```{r}
+# Matriz de correlación de variables cuantitativas 
+correlation_matrix <- cor(numeric_df)
+correlation_matrix
+
+```
+
+## Gráfico de dispersión entre variables cuantitativas
+
+```{r}
+# Gráfico de dispersión
+# Crear una lista de todas las combinaciones posibles de variables
+combinations <- combn(names(numeric_df), 2)
+
+# Crear un gráfico de dispersión para cada par de variables
+for (i in 1:ncol(combinations)) {
+  var1 <- combinations[1, i]
+  var2 <- combinations[2, i]
+  
+  # Crear el gráfico de dispersión
+  gg <- ggplot(numeric_df, aes(x = !!sym(var2), y = !!sym(var1))) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Agregar línea de regresión lineal
+    labs(title = paste("Diagrama de dispersión de", var2, "vs", var1))
+  
+  # Mostrar el gráfico
+  print(gg)
+}
+```
+
+## Gráficos multivariables
+
+```{r}
+# función para crear el boxplot
+crear_boxplot <- function(data, columna_x, columna_y) {
+  # Creamos el gráfico base
+  plot <- ggplot(data, aes(x = !!sym(columna_x), y = !!sym(columna_y), fill = !!sym(columna_x))) +
+    geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+    stat_summary(fun = function(x) quantile(x, 0.75), geom = "errorbar", width = 0.4, color = "black", fun.max = max, linewidth = 1.2) +
+    labs(x = columna_x, y = columna_y) +
+    scale_fill_manual(values = colorRampPalette(brewer.pal(9, "Pastel1"))(length(unique(data[[columna_x]])))) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 10),
+      axis.text.y = element_text(size = 10),
+      axis.title = element_text(size = 12, face = "bold"),
+      legend.position = "none"
+    )
+  
+  return(plot)
+}
+# Categoria y Calificación
+grafico <- crear_boxplot(data = df, columna_x = "Categoría", columna_y = "Calificación")
+print(grafico)
+
+# Clasificación.de.Contenido y Calificación
+grafico <- crear_boxplot(data = df, columna_x = "Clasificación.de.Contenido", columna_y = "Calificación")
+print(grafico)
+
+# Categoria y Precio
+grafico <- crear_boxplot(data = df, columna_x = "Categoría", columna_y = "Precio")
+print(grafico)
+
+# Clasificación.de.Contenido y Precio
+grafico <- crear_boxplot(data = df, columna_x = "Clasificación.de.Contenido", columna_y = "Precio")
+print(grafico)
+
+```
+
+# Modelado de Datos
+
+## Modelo de Random Forest
+
+```{r}
+
+# Seleccionar variables de interés
+df_selected <- df[, c("Calificación", "Categoría", "Clasificación.de.Contenido", "Admite.Anuncios")]
+
+# Verificar y manejar valores faltantes si los hay
+sum(is.na(df_selected))  # Verificar valores faltantes
+df_selected <- na.omit(df_selected)  # Eliminar filas con valores faltantes, si es necesario
+
+# Convertir variables categóricas a factores si es necesario
+df_selected$Categoría <- as.factor(df_selected$Categoría)
+df_selected$Clasificación.de.Contenido <- as.factor(df_selected$Clasificación.de.Contenido)
+df_selected$Admite.Anuncios <- as.factor(df_selected$Admite.Anuncios)
+
+# Entrenar el modelo de Random Forest
+rf_model <- randomForest(Calificación ~ Categoría + Clasificación.de.Contenido + Admite.Anuncios, data = df_selected)
+
+# Ver resumen del modelo
+print(rf_model)
+
+# Obtener la importancia de las variables
+importancia_variables <- importance(rf_model)
+
+# Imprimir los valores de importancia
+print(importancia_variables)
+
+# Ver importancia de las variables
+varImpPlot(rf_model)
+
+
+
+```
+
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+# Ajustar el modelo de árbol de decisión
+tree_model <- rpart(Calificación ~ Categoría + Clasificación.de.Contenido + Admite.Anuncios, data = df_selected)
+
+# Imprimir detalles del árbol
+printcp(tree_model)
+summary(tree_model)
+
+# Graficar el árbol de decisión
+rpart.plot(tree_model)
+
+```
+
+
+# Interpretación de Resultados
+
+## Distribuciones y Estadísticas Descriptivas:
+
+Se observó que la variable "Calificación" tiene una distribución centrada alrededor de 4.2, con una dispersión moderada.
+
+Las variables como "Instalaciones Máximas" y "Número de Calificaciones" mostraron amplias variaciones, indicando diferentes niveles de popularidad entre las aplicaciones.
+
+Los gráficos de caja revelaron variaciones significativas en la calificación promedio entre diferentes categorías de aplicaciones y clasificaciones de contenido.
+
+## Correlaciones entre Variables:
+
+La matriz de correlación sugiere que las variables numéricas analizadas tienen correlaciones débiles entre sí, lo que implica que cada variable aporta información única al modelo.
+
+## Análisis de Variables Categóricas:
+
+Se exploraron las frecuencias de las categorías de aplicaciones y las clasificaciones de contenido a través de gráficos de barras y gráficos circulares, destacando las distribuciones relativas de estas características entre las aplicaciones.
+
+## Modelado Predictivo
+
+### Modelo de Random Forest:
+
+Se construyó un modelo de Random Forest para predecir las calificaciones de las aplicaciones.
+
+Las variables "Categoría", "Clasificación de Contenido" y "Admite Anuncios" fueron identificadas como predictores importantes de la calificación de las aplicaciones según la importancia calculada por el modelo.
+
+Este modelo proporciona una buena precisión predictiva y es capaz de manejar relaciones no lineales entre las variables predictoras y la variable objetivo.
+
+
+# Conclusión
+
+La experiencia inicial con R revela un viaje enriquecedor y transformador en el análisis de datos. Este lenguaje no solo simplifica la manipulación y análisis de datos complejos, sino que también abre las puertas a un vasto conjunto de herramientas y técnicas estadísticas. Las librerías desarrolladas por la comunidad activa y colaborativa que respalda R, ofrecen un entorno ideal para el crecimiento continuo en habilidades analíticas y de programación. La amplia disponibilidad de librerías y su naturaleza de código abierto hacen de R una elección poderosa y motivadora para cualquiera interesado en explorar y comprender el mundo a través de los datos.
+
+# Código
+
+Se adjunta el código completo como un archivo .rmd, sin embargo el código se detalla paso a paso en el archivo .html  adjunto.
+
+
